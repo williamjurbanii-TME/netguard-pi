@@ -45,6 +45,22 @@ func TestNormalizeDomain(t *testing.T) {
 	}
 }
 
+func TestServiceFor(t *testing.T) {
+	for in, want := range map[string]string{
+		"aivideo-normal-us-ttp2.capcutapi.us": "capcut",
+		"api.locketcamera.com":                "locket",
+		"www.youtube.com":                     "youtube",
+		"api16-core.tiktokv.com":              "tiktok",
+		"gemini.google.com":                   "gemini",
+		"www.google.com":                      "",
+		"example.org":                         "",
+	} {
+		if got := ServiceFor(in); got != want {
+			t.Errorf("ServiceFor(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestSafeSearchTarget(t *testing.T) {
 	for in, want := range map[string]string{
 		"www.google.com":    "forcesafesearch.google.com",

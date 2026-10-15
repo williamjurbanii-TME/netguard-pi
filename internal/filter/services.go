@@ -28,6 +28,7 @@ var Services = map[string]Service{
 	"hulu":        {"Hulu", "Video", []string{"hulu.com", "hulustream.com", "huluim.com"}},
 	"primevideo":  {"Prime Video", "Video", []string{"primevideo.com", "aiv-cdn.net", "aiv-delivery.net", "amazonvideo.com"}},
 	"max":         {"Max (HBO)", "Video", []string{"max.com", "hbomax.com", "hbo.com", "hbomaxcdn.com"}},
+	"capcut":      {"CapCut", "Video", []string{"capcut.com", "capcutapi.com", "capcutapi.us", "capcutstatic.com"}},
 	"twitch":      {"Twitch", "Video", []string{"twitch.tv", "ttvnw.net", "jtvnw.net", "twitchcdn.net", "twitchsvc.net", "ext-twitch.tv"}},
 	// Social
 	"tiktok":    {"TikTok", "Social", []string{"tiktok.com", "tiktokv.com", "tiktokv.us", "tiktokcdn.com", "tiktokcdn-us.com", "tiktokcdn-eu.com", "byteoversea.com", "ibytedtos.com", "ibyteimg.com", "muscdn.com", "musical.ly", "tiktokw.us"}},
@@ -37,6 +38,10 @@ var Services = map[string]Service{
 	"twitter":   {"X (Twitter)", "Social", []string{"twitter.com", "x.com", "twimg.com", "t.co"}},
 	"reddit":    {"Reddit", "Social", []string{"reddit.com", "redd.it", "redditmedia.com", "redditstatic.com", "reddituploads.com"}},
 	"pinterest": {"Pinterest", "Social", []string{"pinterest.com", "pinimg.com"}},
+	// Locket Widget (friends' photos on the home screen). Its API host is
+	// api.locketcamera.com; sign-in also uses Google Firebase, shared by many
+	// apps, so blocking may not be complete.
+	"locket": {"Locket", "Social", []string{"locketcamera.com", "locket.camera", "locket.cam"}},
 	// Messaging
 	"discord":  {"Discord", "Messaging", []string{"discord.com", "discord.gg", "discordapp.com", "discordapp.net", "discord.media", "discordcdn.com"}},
 	"whatsapp": {"WhatsApp", "Messaging", []string{"whatsapp.com", "whatsapp.net", "wa.me"}},
