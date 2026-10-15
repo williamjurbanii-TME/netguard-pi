@@ -13,6 +13,23 @@ import (
 	"netguard/internal/store"
 )
 
+func TestSiteOf(t *testing.T) {
+	for in, want := range map[string]string{
+		"youtubei.googleapis.com": "googleapis.com", // private PSL entry ignored
+		"www.bbc.co.uk":           "bbc.co.uk",
+		"eu-west-3.example.com":   "example.com",
+		"example.com":             "example.com",
+		"foo.blogspot.co.uk":      "blogspot.co.uk",
+		"d1abc.cloudfront.net":    "cloudfront.net",
+		"localhost":               "localhost",
+		"a.b.c.amazonaws.com":     "amazonaws.com",
+	} {
+		if got := siteOf(in); got != want {
+			t.Errorf("siteOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestSitesCollapsesAndFlags(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {

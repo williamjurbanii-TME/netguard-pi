@@ -7,11 +7,16 @@ Network-wide ad blocking (like Pi-hole), smart-TV tracking blocking and per-devi
 <table>
   <tr>
     <td><img src="docs/screenshots/overview.png" alt="Overview"><br><b>Overview:</b> every lookup on the network, blocked vs allowed</td>
-    <td><img src="docs/screenshots/devices.png" alt="Devices"><br><b>Devices:</b> groups, pause internet, private Wi-Fi addresses</td>
+    <td><img src="docs/screenshots/summary.png" alt="Device summary"><br><b>Device summary:</b> apps tried or used, flagged sites, one-click block</td>
   </tr>
   <tr>
+    <td><img src="docs/screenshots/devices.png" alt="Devices"><br><b>Devices:</b> groups, pause internet, private Wi-Fi addresses</td>
+  <tr>
     <td><img src="docs/screenshots/groups.png" alt="Groups"><br><b>Groups:</b> block categories and apps, force SafeSearch</td>
-    <td><img src="docs/screenshots/querylog.png" alt="Query log"><br><b>Query log:</b> live, with one-click block or allow</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/querylog.png" alt="Query log"><br><b>Query log:</b> one line per site, flags adult/gambling/malware</td>
+    <td></td>
   </tr>
 </table>
 
@@ -48,15 +53,23 @@ Plan for about an hour. You'll need access to your router's admin page.
 - **Blocks ads, trackers, malware, adult and gambling sites** for every device on the network, using well-known public blocklists organised into categories.
 - **Groups with different rules.** Put each device in a group: *Default*, *Kids*, *School*, *TVs*, or your own. A group can:
   - block whole categories;
-  - block apps such as YouTube, TikTok, Roblox, Instagram or Discord;
+  - block any of about 30 apps with one click, organised by type:
+    - *Video:* YouTube, Netflix, Disney+, Twitch and others;
+    - *Social:* TikTok, Instagram, Snapchat and others;
+    - *Messaging:* Discord, WhatsApp, Telegram;
+    - *Games:* Roblox, Fortnite, Minecraft, Steam, Xbox, PlayStation and others;
+    - *Music:* Spotify;
+    - *AI chatbots:* ChatGPT, Character.AI, Claude, Gemini, Copilot;
   - force SafeSearch on Google, Bing and DuckDuckGo, and Restricted Mode on YouTube;
   - stop devices bypassing the filter with encrypted DNS or iCloud Private Relay;
   - keep its own always-block and always-allow lists.
 - **Dashboards.**
   - *Overview.*
   - *Ads & Tracking:* which devices send the most tracking, and to which companies.
-  - *Devices:* per-device activity.
-  - *Query Log:* live, with one-click block or allow.
+  - *Devices:* click any device for a **summary report card**. It shows which apps it used or tried, any flagged sites, and the other sites it visited, each with a one-click Block. It's a quick check for anything you forgot to block.
+  - *Query Log:* one line per site per device, with recognised apps labelled and adult, gambling and malware sites flagged in red. "Hide background" removes ads, trackers and system chatter (iCloud, Windows Update and so on). There's also a view of every individual lookup.
+
+  Flagging works even for sites a group allows: anything on a blocklist is tagged with its category, so you can see that a site was visited, not only when it was blocked.
   - *DHCP leases.*
 - **Pause internet** for any single device.
 - **Smart-TV telemetry blocking** covers Samsung, LG, Roku, Vizio and Fire TV. Before blocking, you can watch what a TV sends home: it appears as "seen, not blocked".

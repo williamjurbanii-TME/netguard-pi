@@ -141,6 +141,8 @@ On the dashboard:
 - Put TVs in **TVs**, children's devices in **Kids** or **School**.
 - Name unclear devices with **Edit → Name**.
 
+Show them the device **Summary** (Devices → Summary): a report card per device with flagged sites, the apps it used or tried (one-click block per group) and other sites visited. Suggest bookmarking each child's summary; its **link** goes to `#devices/<id>`.
+
 To tell identical "iPhone"s apart, the user compares **Settings → Wi-Fi → ⓘ → Wi-Fi Address** on each phone with the Devices page. Recommend setting **Private Wi-Fi Address → Fixed** on kids' phones.
 
 ## Diagnostics

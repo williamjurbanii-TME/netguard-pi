@@ -57,6 +57,8 @@ func New(cfg config.WebConfig, version, localDomain string, retentionDays int, s
 	mux.HandleFunc("PUT /api/devices/{id}", s.updateDevice)
 	mux.HandleFunc("DELETE /api/devices/{id}", s.deleteDevice)
 	mux.HandleFunc("GET /api/devices/{id}/stats", s.deviceStats)
+	mux.HandleFunc("GET /api/devices/{id}/summary", s.deviceSummary)
+	mux.HandleFunc("POST /api/groups/{id}/service", s.setGroupService)
 	mux.HandleFunc("POST /api/devices/{id}/merge", s.mergeDevice)
 	mux.HandleFunc("DELETE /api/identifiers/{identifier}", s.detachIdentifier)
 	mux.HandleFunc("GET /api/groups", s.listGroups)
@@ -229,17 +231,34 @@ type siteView struct {
 	Blocked    int64    `json:"blocked"`
 	First      int64    `json:"first"`
 	Last       int64    `json:"last"`
-	Hosts      []string `json:"hosts"`      // busiest hostnames under the site
-	Flags      []string `json:"flags"`      // sensitive categories (adult, gambling, malware)
-	Reasons    []string `json:"reasons"`    // distinct block/tag reasons
-	Background bool     `json:"background"` // every lookup was ad/tracking traffic
+	Hosts      []string `json:"hosts"`         // busiest hostnames under the site
+	Flags      []string `json:"flags"`         // sensitive categories (adult, gambling, malware)
+	Reasons    []string `json:"reasons"`       // distinct block/tag reasons
+	App        string   `json:"app,omitempty"` // recognised app, e.g. "YouTube"
+	Background bool     `json:"background"`    // only ad/tracker or system-service traffic
 }
 
+// siteOf returns the registrable domain ("www.bbc.co.uk" -> "bbc.co.uk").
+// Only ICANN suffixes count: the public suffix list also has "private"
+// entries such as googleapis.com, which would otherwise make every
+// *.googleapis.com host its own site.
 func siteOf(domain string) string {
-	if s, err := publicsuffix.EffectiveTLDPlusOne(domain); err == nil {
-		return s
+	suffix, icann := publicsuffix.PublicSuffix(domain)
+	for !icann {
+		_, rest, ok := strings.Cut(suffix, ".")
+		if !ok {
+			break
+		}
+		suffix, icann = publicsuffix.PublicSuffix(rest)
 	}
-	return domain
+	if domain == suffix || !strings.HasSuffix(domain, "."+suffix) {
+		return domain
+	}
+	label := strings.TrimSuffix(domain, "."+suffix)
+	if i := strings.LastIndexByte(label, '.'); i >= 0 {
+		label = label[i+1:]
+	}
+	return label + "." + suffix
 }
 
 // sites collapses the query log into one row per (site, device), so a visit
@@ -289,6 +308,9 @@ func (s *Server) sites(w http.ResponseWriter, r *http.Request) {
 		a.First = min(a.First, row.First)
 		a.Last = max(a.Last, row.Last)
 		a.hosts[row.Domain] += row.Lookups
+		if key := filter.ServiceFor(row.Domain); key != "" && a.App == "" {
+			a.App = filter.Services[key].Label
+		}
 		if row.Reason != "" {
 			a.reasons[row.Reason] = true
 		}
@@ -303,7 +325,7 @@ func (s *Server) sites(w http.ResponseWriter, r *http.Request) {
 	onlyFlagged, hideBackground := q.Get("flagged") == "1", q.Get("hide_background") == "1"
 	out := []siteView{}
 	for _, a := range order {
-		a.Background = a.adLookups == a.Lookups
+		a.Background = len(a.flags) == 0 && a.App == "" && (a.adLookups == a.Lookups || filter.IsBackground(a.Site))
 		if (onlyFlagged && len(a.flags) == 0) || (hideBackground && a.Background) {
 			continue
 		}
@@ -388,7 +410,7 @@ func groupCompanies(rows []store.AdDomainRow, limit int) []adCompany {
 }
 
 func (s *Server) catalog(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"categories": s.lists.Categories(), "services": filter.ServiceNames()})
+	writeJSON(w, map[string]any{"categories": s.lists.Categories(), "services": filter.ServiceList(), "service_categories": filter.ServiceCategories})
 }
 
 // ---- devices ----

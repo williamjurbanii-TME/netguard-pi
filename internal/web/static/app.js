@@ -182,7 +182,7 @@ const pages = {
           <td class="num">${fmt(d.queries)}</td>
           <td class="num hide-sm">${fmt(d.blocked)} <span class="muted small">${pct(d.blocked, d.queries)}</span></td>
           <td><label class="switch"><input type="checkbox" data-act="pause" ${d.paused ? 'checked' : ''}><span></span></label></td>
-          <td style="white-space:nowrap"><button data-act="details">Activity</button> <button data-act="edit">Edit</button></td>
+          <td style="white-space:nowrap"><button data-act="details">Summary</button> <button data-act="edit">Edit</button></td>
         </tr>`).join('') || '<tr><td colspan="7" class="muted">No devices yet. Point a device\'s DNS at this machine to see it here.</td></tr>'}
       </table></div>`;
     document.getElementById('reload').onclick = () => pages.devices();
@@ -257,7 +257,7 @@ const pages = {
         <input id="f-search" placeholder="Search domain…" value="${esc(logView.search)}">
         ${view === 'sites' ? `
           <label class="chip"><input type="checkbox" id="f-flagged" ${logView.flagged ? 'checked' : ''}>Flagged only <span class="muted small">(adult, gambling, malware)</span></label>
-          <label class="chip"><input type="checkbox" id="f-bg" ${logView.hideBackground ? 'checked' : ''}>Hide ads &amp; trackers</label>` : ''}
+          <label class="chip" title="Hide ads, trackers and system services (iCloud, Windows Update, content servers...)"><input type="checkbox" id="f-bg" ${logView.hideBackground ? 'checked' : ''}>Hide background</label>` : ''}
         <span class="spacer"></span>
         <label class="small muted" title="Updates pause while your mouse is over the table"><input type="checkbox" id="f-live" ${logView.live ? 'checked' : ''}> Live</label>
       </div>
@@ -360,7 +360,7 @@ function siteRow(s) {
   return `<tr class="${s.flags.length ? 'flagged' : ''}">
     <td class="mono" title="first ${esc(new Date(s.first * 1000).toLocaleString())}">${when(s.last)}</td>
     <td>${esc(devName(d) || s.device_id)}</td>
-    <td style="word-break:break-all"><b>${esc(s.site)}</b>${s.flags.map(f => ` <span class="badge flag">${esc(f)}</span>`).join('')}
+    <td style="word-break:break-all"><b>${esc(s.site)}</b>${s.app ? ` <span class="badge">${esc(s.app)}</span>` : ''}${s.flags.map(f => ` <span class="badge flag">${esc(f)}</span>`).join('')}
       <div class="muted small mono">${s.hosts.map(esc).join(' · ')}</div></td>
     <td class="num">${fmt(s.lookups)}</td>
     <td><span class="badge ${badgeClass}">${status}</span> <span class="muted small">${esc(tags)}</span></td>
@@ -386,7 +386,11 @@ function logRow(e) {
 function groupForm(g) {
   const cats = state.catalog.categories, svcs = state.catalog.services;
   const devCount = state.devices.filter(d => d.group_id === g.id).length;
-  const chip = (name, val, on) => `<label class="chip"><input type="checkbox" name="${name}" value="${esc(val)}" ${on ? 'checked' : ''}>${esc(val)}</label>`;
+  const chip = (name, val, on, label = val) => `<label class="chip"><input type="checkbox" name="${name}" value="${esc(val)}" ${on ? 'checked' : ''}>${esc(label)}</label>`;
+  const svcRows = state.catalog.service_categories.map(cat => {
+    const inCat = svcs.filter(s => s.category === cat);
+    return inCat.length ? `<div class="svc-row"><span class="svc-cat">${esc(cat)}</span><div class="chips">${inCat.map(s => chip('svc', s.key, g.services.includes(s.key), s.label)).join('')}</div></div>` : '';
+  }).join('');
   return `<form class="panel" data-gid="${g.id}" style="margin-bottom:12px">
     <div class="toolbar">
       <input name="name" value="${esc(g.name)}" placeholder="Group name" required style="font-weight:600">
@@ -396,7 +400,7 @@ function groupForm(g) {
       <button class="primary">Save</button>
     </div>
     <div class="field"><label>Block categories (from blocklists)</label><div class="chips">${cats.map(c => chip('cat', c, g.categories.includes(c))).join('')}</div></div>
-    <div class="field"><label>Block apps &amp; services</label><div class="chips">${svcs.map(s => chip('svc', s, g.services.includes(s))).join('')}</div></div>
+    <div class="field"><label>Block apps &amp; services</label>${svcRows}</div>
     <div class="field chips">
       <label class="chip"><input type="checkbox" name="safe_search" ${g.safe_search ? 'checked' : ''}>Force SafeSearch (Google, Bing, DuckDuckGo, YouTube Restricted)</label>
       <label class="chip"><input type="checkbox" name="block_doh" ${g.block_doh ? 'checked' : ''}>Block encrypted-DNS bypass (DoH)</label>
@@ -408,20 +412,78 @@ function groupForm(g) {
   </form>`;
 }
 
+let summaryHours = 24;
+
+function appCard(a, groupId, groupName) {
+  const state = a.blocked === a.lookups ? 'blocked' : a.restricted > 0 && a.blocked === 0 ? 'restricted' : a.blocked > 0 ? 'partly' : 'allowed';
+  const text = {
+    blocked: `Blocked · tried ${fmt(a.lookups)}×`,
+    restricted: 'Allowed · Restricted Mode',
+    partly: `Partly blocked · ${fmt(a.blocked)} of ${fmt(a.lookups)}`,
+    allowed: `Used · ${fmt(a.lookups)} lookups`,
+  }[state] + (a.blocked_by_rule && state !== 'blocked' ? ' · <b>now blocked</b>' : '');
+  const btn = a.blocked_by_rule
+    ? `<button class="link" data-svc="${esc(a.key)}" data-block="0" data-group="${groupId}" title="Unblock ${esc(a.label)} for the ${esc(groupName)} group">Unblock</button>`
+    : `<button class="link danger" data-svc="${esc(a.key)}" data-block="1" data-group="${groupId}" title="Block ${esc(a.label)} for the ${esc(groupName)} group">Block</button>`;
+  return `<div class="app-card ${state}"><div><b>${esc(a.label)}</b> <span class="muted small">${esc(a.category)}</span></div>
+    <div class="small app-state">${text}</div><div>${btn}</div></div>`;
+}
+
 async function deviceDetails(id) {
   const d = deviceById(id);
-  const [st, recent] = await Promise.all([
-    api(`/devices/${encodeURIComponent(id)}/stats`),
+  const enc = encodeURIComponent(id);
+  const [sum, st, recent] = await Promise.all([
+    api(`/devices/${enc}/summary?hours=${summaryHours}`),
+    api(`/devices/${enc}/stats`),
     api('/queries?' + new URLSearchParams({ device: id, limit: 40 })),
   ]);
+  const flaggedAllowed = sum.flagged.filter(f => f.blocked < f.lookups);
+  const periods = [[24, 'Last 24 hours'], [168, 'Last 7 days']];
   openModal(`
-    <div class="toolbar"><h2 style="margin:0">${esc(devName(d))}</h2><span class="muted small mono">${esc(id)}</span><span class="spacer"></span><button onclick="closeModal()">Close</button></div>
-    <div class="panel"><div class="toolbar"><h3>Last 24 hours</h3><span class="spacer"></span>${legend}</div>${chart(st.hourly)}</div>
-    <div class="grid2">
-      <div class="panel"><h3>Most visited</h3>${domainList(st.top_allowed, d.group_id, 'block')}</div>
-      <div class="panel"><h3>Most blocked</h3>${domainList(st.top_blocked, d.group_id, 'allow')}</div>
-    </div>
-    <div class="panel" style="margin-top:12px"><h3>Recent queries</h3><table>${recent.map(logRow).join('')}</table></div>`);
+    <div class="toolbar"><h2 style="margin:0">${esc(devName(d))}</h2><span class="badge">${esc(sum.group_name || 'Default')}</span>
+      ${sum.paused ? '<span class="badge blocked">internet paused</span>' : ''}<span class="spacer"></span>
+      <select id="sum-hours">${periods.map(([h, l]) => `<option value="${h}" ${h === summaryHours ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <a class="small" href="#devices/${encodeURIComponent(id)}" title="Link to this summary (bookmark it)">link</a>
+      <button onclick="closeModal()">Close</button></div>
+
+    ${sum.flagged.length ? `<div class="alert ${flaggedAllowed.length ? 'bad' : ''}">
+      <b>${flaggedAllowed.length ? '⚠ Visited' : 'Tried to visit'} ${sum.flagged.length} flagged site${sum.flagged.length > 1 ? 's' : ''}</b>${flaggedAllowed.length ? `: <b>${flaggedAllowed.length} not blocked</b> by the ${esc(sum.group_name)} group.` : ', all blocked.'}
+      <div class="chips" style="margin-top:6px">${sum.flagged.map(f => `<span class="chip"><span class="badge flag">${esc(f.category)}</span> ${esc(f.site)}
+        <span class="muted small">${f.blocked === f.lookups ? 'blocked' : 'allowed'}</span>
+        ${f.blocked < f.lookups ? `<button class="link" data-rule="block" data-domain="${esc(f.site)}" data-group="${sum.group_id}">block</button>` : ''}</span>`).join('')}</div>
+    </div>` : `<div class="alert good">No adult, gambling or malware sites in this period.</div>`}
+
+    <h3 style="margin-top:16px">Apps &amp; services</h3>
+    ${sum.apps.length ? `<div class="app-grid">${sum.apps.map(a => appCard(a, sum.group_id, sum.group_name)).join('')}</div>`
+      : '<p class="muted">No recognised apps in this period.</p>'}
+
+    <h3 style="margin-top:16px">Other sites</h3>
+    ${sum.sites.length ? `<div class="chips">${sum.sites.map(s => `<span class="chip">${esc(s.site)} <span class="muted small">${fmt(s.lookups)}</span>
+      ${s.blocked === s.lookups ? '<span class="badge blocked">blocked</span>'
+        : `<button class="link" data-rule="block" data-domain="${esc(s.site)}" data-group="${sum.group_id}" title="Block ${esc(s.site)} for the ${esc(sum.group_name)} group">block</button>`}</span>`).join('')}</div>`
+      : '<p class="muted">No other sites.</p>'}
+    <p class="muted small">${fmt(sum.lookups)} lookups in total. ${fmt(sum.background)} background lookups (ads, trackers, system services) are hidden.
+      Blocking here applies to everyone in the <b>${esc(sum.group_name)}</b> group.</p>
+
+    <details style="margin-top:12px"><summary class="muted">Full activity: hourly chart, top domains, recent lookups</summary>
+      <div class="panel" style="margin-top:8px"><div class="toolbar"><h3>Last 24 hours</h3><span class="spacer"></span>${legend}</div>${chart(st.hourly)}</div>
+      <div class="grid2">
+        <div class="panel"><h3>Most visited</h3>${domainList(st.top_allowed, d.group_id, 'block')}</div>
+        <div class="panel"><h3>Most blocked</h3>${domainList(st.top_blocked, d.group_id, 'allow')}</div>
+      </div>
+      <div class="panel" style="margin-top:12px"><h3>Recent lookups</h3><table>${recent.map(logRow).join('')}</table></div>
+    </details>`);
+
+  document.getElementById('sum-hours').onchange = e => { summaryHours = Number(e.target.value); deviceDetails(id); };
+  document.querySelectorAll('#modal-body [data-svc]').forEach(b => b.onclick = async () => {
+    const block = b.dataset.block === '1';
+    try {
+      await api(`/groups/${b.dataset.group}/service`, { method: 'POST', body: { service: b.dataset.svc, block } });
+      toast(`${block ? 'Blocked' : 'Unblocked'} for the ${sum.group_name} group`);
+      state.groups = await api('/groups');
+      deviceDetails(id);
+    } catch (err) { toast(err.message); }
+  });
 }
 
 function editDevice(id) {
@@ -535,7 +597,8 @@ async function mergeDevice(src, into) {
 // ---------- router ----------
 
 async function route() {
-  const page = location.hash.slice(1) || 'overview';
+  // "#devices/<id>" opens that device's summary (bookmarkable).
+  const [page = 'overview', arg] = (location.hash.slice(1) || 'overview').split(/\/(.*)/s);
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('active', a.dataset.page === page));
   clearInterval(timer);
   closeModal();
@@ -544,6 +607,7 @@ async function route() {
     if (typeof refresh === 'function') {
       timer = setInterval(() => { if (document.getElementById('modal').classList.contains('hidden')) refresh(); }, page === 'log' ? 3000 : 15000);
     }
+    if (page === 'devices' && arg) await deviceDetails(decodeURIComponent(arg));
   } catch (err) {
     app.innerHTML = `<div class="warn-box">Error: ${esc(err.message)}</div>`;
   }

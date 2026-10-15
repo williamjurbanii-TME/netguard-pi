@@ -99,6 +99,7 @@ var devices = []device{
 	{ids: []string{"02:9e:41:d0:3a:27"}, name: "Emma's iPad", hostname: "Emmas-iPad", src: "dhcp", group: gKids, ip: "192.168.1.43",
 		perDay: 900, hours: kids, queries: []q{
 			allow("pbskids.org", 20), allow("www.abcya.com", 15), allow("api.roblox.com", 15), allow("gateway.icloud.com", 10),
+			allow("api-global.netflix.com", 8), blk("adult-site.example", "list:adult", 1),
 			service("www.youtube.com", "youtube", 30), service("i.ytimg.com", "youtube", 20), service("youtubei.googleapis.com", "youtube", 15),
 			service("www.tiktok.com", "tiktok", 12), safe("www.google.com", 15), blk("mask.icloud.com", "private-relay", 6),
 			ads("app-measurement.com", 15), ads("googleads.g.doubleclick.net", 10),

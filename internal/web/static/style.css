@@ -41,6 +41,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .warn-text { color: var(--warn); margin-top: 2px; }
 .badge.flag { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
 tr.flagged td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
+.alert { border: 1px solid var(--warn); border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
+.alert.bad { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); }
+.alert.good { border-color: var(--ok); color: var(--ok); }
+.app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.app-card { border: 1px solid var(--border); border-left-width: 4px; border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.app-card.blocked { border-left-color: var(--bad); }
+.app-card.allowed { border-left-color: var(--ok); }
+.app-card.restricted, .app-card.partly { border-left-color: var(--warn); }
+.app-card.blocked .app-state { color: var(--bad); }
+.app-card.allowed .app-state { color: var(--ok); }
+.app-card.restricted .app-state, .app-card.partly .app-state { color: var(--warn); }
+button.link.danger { color: var(--bad); }
+.svc-row { display: flex; gap: 10px; align-items: baseline; margin-bottom: 6px; }
+.svc-cat { width: 90px; flex-shrink: 0; color: var(--muted); font-size: 12px; }
+details > summary { cursor: pointer; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; padding: 6px 14px; }
 .seg button + button { border-left: 1px solid var(--border); }

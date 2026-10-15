@@ -126,7 +126,7 @@ func (e *Engine) compile(g store.Group) *compiledGroup {
 		}
 	}
 	for _, svc := range g.Services {
-		for _, d := range Services[svc] {
+		for _, d := range Services[svc].Domains {
 			c.block[d] = "service:" + svc
 		}
 	}

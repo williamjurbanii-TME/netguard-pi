@@ -794,6 +794,32 @@ func (s *Store) TagDomains(reasons map[string]string, since int64) (int64, error
 	return n, tx.Commit()
 }
 
+// DomainActivity is one device's lookups of one hostname for one reason.
+type DomainActivity struct {
+	Domain, Reason             string
+	Lookups, Blocked, Restrict int64 // Restrict: answered with SafeSearch / Restricted Mode
+}
+
+// DeviceActivity returns a device's lookups since `since`, grouped by
+// hostname and reason (local answers excluded). Powers the device summary.
+func (s *Store) DeviceActivity(deviceID string, since int64) ([]DomainActivity, error) {
+	rows, err := s.db.Query(`SELECT domain, reason, COUNT(*), SUM(status='blocked'), SUM(status='safesearch')
+		FROM queries WHERE device_id=? AND ts>=? AND status!='local' GROUP BY domain, reason`, deviceID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []DomainActivity{}
+	for rows.Next() {
+		var a DomainActivity
+		if err := rows.Scan(&a.Domain, &a.Reason, &a.Lookups, &a.Blocked, &a.Restrict); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // SiteRow aggregates lookups of one hostname by one device for one reason.
 type SiteRow struct {
 	Domain, DeviceID, Reason string
