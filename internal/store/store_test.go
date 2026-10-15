@@ -22,8 +22,8 @@ func TestAdStats(t *testing.T) {
 		q("tv", "log.samsungacr.com", "allowed", "seen:smarttv", 30),
 		q("tv", "netflix.com", "allowed", "", 40),
 		q("phone", "doubleclick.net", "blocked", "list:ads", 50),
-		q("phone", "old.ad.com", "blocked", "list:ads", 3*86400), // outside 24h
-		q("phone", "pornsite.com", "blocked", "list:adult", 60),  // not an ad category
+		q("phone", "old.ad.com", "blocked", "list:ads", 3*86400),      // outside 24h
+		q("phone", "adult-site.example", "blocked", "list:adult", 60), // not an ad category
 	}, nil)
 	if err != nil {
 		t.Fatal(err)

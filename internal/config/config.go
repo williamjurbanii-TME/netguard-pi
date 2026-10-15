@@ -73,7 +73,7 @@ func Default() *Config {
 		},
 		Local: LocalConfig{Domain: "lan", DiscoverNames: true},
 		DHCP:  DHCPConfig{LeaseHours: 24, Netmask: "255.255.255.0"},
-		Web:  WebConfig{Listen: ":8080", Username: "admin"},
+		Web:   WebConfig{Listen: ":8080", Username: "admin"},
 	}
 }
 

@@ -30,7 +30,7 @@ type q struct {
 	weight                 int
 }
 
-func allow(d string, w int) q       { return q{d, "allowed", "", w} }
+func allow(d string, w int) q        { return q{d, "allowed", "", w} }
 func blk(d, why string, w int) q     { return q{d, "blocked", why, w} }
 func seen(d, cat string, w int) q    { return q{d, "allowed", "seen:" + cat, w} }
 func safe(d string, w int) q         { return q{d, "safesearch", "safesearch", w} }

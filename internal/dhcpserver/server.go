@@ -46,8 +46,8 @@ type Server struct {
 	leaseTime time.Duration
 
 	mu           sync.Mutex
-	leases       map[string]*lease // mac -> lease
-	byIP         map[uint32]string // ip -> mac
+	leases       map[string]*lease          // mac -> lease
+	byIP         map[uint32]string          // ip -> mac
 	reservations map[string]uint32          // mac -> ip
 	reservedIPs  map[uint32]map[string]bool // ip -> macs of the device that owns it
 

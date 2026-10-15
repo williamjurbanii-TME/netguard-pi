@@ -39,6 +39,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .badge.error { color: var(--muted); }
 .badge.local { color: var(--accent); border-color: var(--accent); }
 .warn-text { color: var(--warn); margin-top: 2px; }
+.badge.flag { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
+tr.flagged td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; padding: 6px 14px; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button.active { background: var(--accent); color: #fff; }
 button, select, input, textarea { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }

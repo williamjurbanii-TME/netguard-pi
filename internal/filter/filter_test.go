@@ -12,18 +12,18 @@ import (
 
 func TestParseLine(t *testing.T) {
 	cases := map[string][]string{
-		"0.0.0.0 ads.example.com":           {"ads.example.com"},
-		"127.0.0.1 a.com b.com # comment":   {"a.com", "b.com"},
-		"tracker.net":                       {"tracker.net"},
-		"||ads.site.org^":                   {"ads.site.org"},
-		"||ads.site.org^$third-party":       {"ads.site.org"},
-		"example.com##.banner":              nil,
-		"@@||good.com^":                     nil,
-		"# comment":                         nil,
-		"0.0.0.0 localhost":                 nil,
-		"0.0.0.0 0.0.0.0":                   nil,
-		"Bad.Domain.COM.":                   {"bad.domain.com"},
-		"/regex/":                           nil,
+		"0.0.0.0 ads.example.com":         {"ads.example.com"},
+		"127.0.0.1 a.com b.com # comment": {"a.com", "b.com"},
+		"tracker.net":                     {"tracker.net"},
+		"||ads.site.org^":                 {"ads.site.org"},
+		"||ads.site.org^$third-party":     {"ads.site.org"},
+		"example.com##.banner":            nil,
+		"@@||good.com^":                   nil,
+		"# comment":                       nil,
+		"0.0.0.0 localhost":               nil,
+		"0.0.0.0 0.0.0.0":                 nil,
+		"Bad.Domain.COM.":                 {"bad.domain.com"},
+		"/regex/":                         nil,
 	}
 	for in, want := range cases {
 		if got := parseLine(in); !reflect.DeepEqual(got, want) {
@@ -104,7 +104,7 @@ func TestEngineGroups(t *testing.T) {
 	// Unknown device -> Default group: ads blocked, adult/YouTube allowed.
 	check("unknown", "doubleclick.net", Block, "list:ads")
 	check("unknown", "sub.doubleclick.net", Block, "list:ads")
-	check("unknown", "badsite.com", Allow, "")
+	check("unknown", "badsite.com", Allow, "seen:adult")
 	check("unknown", "www.youtube.com", Allow, "")
 	// Kids group.
 	kid := "aa:bb:cc:dd:ee:01"

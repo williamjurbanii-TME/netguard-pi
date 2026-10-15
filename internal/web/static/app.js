@@ -245,27 +245,78 @@ const pages = {
 
   async log() {
     await loadState();
+    const view = logView.mode;
     app.innerHTML = `
-      <h2>Query Log</h2>
+      <div class="toolbar"><h2 style="margin:0">Query Log</h2><span class="spacer"></span>
+        <div class="seg"><button data-view="sites" class="${view === 'sites' ? 'active' : ''}" title="One line per website per device">Sites</button><button data-view="raw" class="${view === 'raw' ? 'active' : ''}" title="Every single DNS lookup">Every lookup</button></div></div>
       <div class="toolbar">
-        <select id="f-device"><option value="">All devices</option>${state.devices.map(d => `<option value="${esc(d.id)}">${esc(devName(d))}</option>`).join('')}</select>
-        <select id="f-status"><option value="">Any status</option><option>blocked</option><option>allowed</option><option>cached</option><option>safesearch</option><option>local</option><option>error</option></select>
-        <input id="f-search" placeholder="Search domain…">
+        <select id="f-device"><option value="">All devices</option>${state.devices.map(d => `<option value="${esc(d.id)}" ${d.id === logView.device ? 'selected' : ''}>${esc(devName(d))}</option>`).join('')}</select>
+        ${view === 'sites'
+          ? `<select id="f-hours">${[[1, 'Last hour'], [24, 'Last 24 hours'], [168, 'Last 7 days']].map(([h, l]) => `<option value="${h}" ${h === logView.hours ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+          : `<select id="f-status"><option value="">Any status</option>${['blocked', 'allowed', 'cached', 'safesearch', 'local', 'error'].map(s => `<option ${s === logView.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`}
+        <input id="f-search" placeholder="Search domain…" value="${esc(logView.search)}">
+        ${view === 'sites' ? `
+          <label class="chip"><input type="checkbox" id="f-flagged" ${logView.flagged ? 'checked' : ''}>Flagged only <span class="muted small">(adult, gambling, malware)</span></label>
+          <label class="chip"><input type="checkbox" id="f-bg" ${logView.hideBackground ? 'checked' : ''}>Hide ads &amp; trackers</label>` : ''}
         <span class="spacer"></span>
-        <label class="small muted"><input type="checkbox" id="f-live" checked> Live</label>
+        <label class="small muted" title="Updates pause while your mouse is over the table"><input type="checkbox" id="f-live" ${logView.live ? 'checked' : ''}> Live</label>
       </div>
-      <div class="panel"><table><thead><tr><th>Time</th><th>Device</th><th>Domain</th><th class="hide-sm">Type</th><th>Status</th><th></th></tr></thead><tbody id="log-body"></tbody></table></div>`;
-    const load = async () => {
-      const q = new URLSearchParams({ device: v('f-device'), status: v('f-status'), search: v('f-search'), limit: 300 });
-      const rows = await api('/queries?' + q);
-      document.getElementById('log-body').innerHTML = rows.map(logRow).join('') || '<tr><td colspan="6" class="muted">No queries match.</td></tr>';
+      <div class="panel" id="log-panel"><table>${view === 'sites'
+        ? '<thead><tr><th>Last seen</th><th>Device</th><th>Site</th><th class="num">Lookups</th><th>Status</th><th></th></tr></thead>'
+        : '<thead><tr><th>Time</th><th>Device</th><th>Domain</th><th class="hide-sm">Type</th><th>Status</th><th></th></tr></thead>'}
+        <tbody id="log-body"></tbody></table></div>`;
+
+    let hovering = false;
+    const panel = document.getElementById('log-panel');
+    panel.onmouseenter = () => { hovering = true; };
+    panel.onmouseleave = () => { hovering = false; };
+    const val = id => document.getElementById(id)?.value ?? '';
+    const read = () => {
+      logView.device = val('f-device');
+      logView.search = val('f-search');
+      logView.live = document.getElementById('f-live').checked;
+      if (view === 'sites') {
+        logView.hours = Number(val('f-hours'));
+        logView.flagged = document.getElementById('f-flagged').checked;
+        logView.hideBackground = document.getElementById('f-bg').checked;
+      } else {
+        logView.status = val('f-status');
+      }
+      saveLogView();
     };
-    const v = id => document.getElementById(id).value;
-    ['f-device', 'f-status'].forEach(id => document.getElementById(id).onchange = load);
+    const load = async () => {
+      read();
+      const body = document.getElementById('log-body');
+      if (view === 'sites') {
+        const q = new URLSearchParams({ device: logView.device, search: logView.search, hours: logView.hours,
+          flagged: logView.flagged ? 1 : 0, hide_background: logView.hideBackground ? 1 : 0 });
+        const rows = await api('/sites?' + q);
+        body.innerHTML = rows.map(siteRow).join('') || '<tr><td colspan="6" class="muted">No sites match.</td></tr>';
+        body.querySelectorAll('[data-drill]').forEach(b => b.onclick = () => {
+          Object.assign(logView, { mode: 'raw', device: b.dataset.device, search: b.dataset.drill, status: '' });
+          saveLogView();
+          pages.log();
+        });
+      } else {
+        const q = new URLSearchParams({ device: logView.device, status: logView.status, search: logView.search, limit: 300 });
+        const rows = await api('/queries?' + q);
+        body.innerHTML = rows.map(logRow).join('') || '<tr><td colspan="6" class="muted">No queries match.</td></tr>';
+      }
+    };
+    app.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { logView.mode = b.dataset.view; saveLogView(); pages.log(); });
+    ['f-device', 'f-hours', 'f-status', 'f-flagged', 'f-bg', 'f-live'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.onchange = load;
+    });
     let deb;
     document.getElementById('f-search').oninput = () => { clearTimeout(deb); deb = setTimeout(load, 300); };
     await load();
-    return () => { if (document.getElementById('f-live')?.checked) return load(); };
+    let tick = 0;
+    return () => {
+      // Raw view refreshes every 3 s; the heavier Sites view every 15 s.
+      if (!logView.live || hovering || (view === 'sites' && ++tick % 5 !== 0)) return;
+      return load();
+    };
   },
 
   async dhcp() {
@@ -284,6 +335,40 @@ const pages = {
   },
 };
 
+// Query Log view settings, remembered per browser.
+const logView = Object.assign(
+  { mode: 'sites', device: '', search: '', status: '', hours: 24, flagged: false, hideBackground: true, live: true },
+  (() => { try { return JSON.parse(localStorage.getItem('ng.logView') || '{}'); } catch { return {}; } })());
+function saveLogView() {
+  try { localStorage.setItem('ng.logView', JSON.stringify(logView)); } catch { /* storage unavailable */ }
+}
+
+function when(ts) {
+  const d = new Date(ts * 1000);
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function siteRow(s) {
+  const d = deviceById(s.device_id);
+  const gid = d ? d.group_id : 1;
+  const status = s.blocked === 0 ? 'allowed' : s.blocked === s.lookups ? 'blocked' : 'partly blocked';
+  const badgeClass = status === 'partly blocked' ? 'safesearch' : status;
+  const tags = s.reasons.filter(r => !s.flags.some(f => r.endsWith(':' + f))).map(r => r.replace(/^(list|seen):/, '')).join(', ');
+  const action = status === 'blocked' ? 'allow' : 'block';
+  return `<tr class="${s.flags.length ? 'flagged' : ''}">
+    <td class="mono" title="first ${esc(new Date(s.first * 1000).toLocaleString())}">${when(s.last)}</td>
+    <td>${esc(devName(d) || s.device_id)}</td>
+    <td style="word-break:break-all"><b>${esc(s.site)}</b>${s.flags.map(f => ` <span class="badge flag">${esc(f)}</span>`).join('')}
+      <div class="muted small mono">${s.hosts.map(esc).join(' · ')}</div></td>
+    <td class="num">${fmt(s.lookups)}</td>
+    <td><span class="badge ${badgeClass}">${status}</span> <span class="muted small">${esc(tags)}</span></td>
+    <td style="white-space:nowrap"><button class="link" data-drill="${esc(s.site)}" data-device="${esc(s.device_id)}" title="Show every lookup">details</button>
+      <button class="link" data-rule="${action}" data-domain="${esc(s.site)}" data-group="${gid}" title="${action} ${esc(s.site)} and its subdomains for this device's group">${action}</button></td>
+  </tr>`;
+}
+
 function logRow(e) {
   const d = deviceById(e.device_id);
   const gid = d ? d.group_id : 1;
@@ -293,7 +378,7 @@ function logRow(e) {
     <td>${esc(devName(d) || e.device_id)}<div class="muted small mono">${esc(e.client_ip)}</div></td>
     <td style="word-break:break-all">${esc(e.domain)}</td>
     <td class="hide-sm muted">${esc(e.qtype)}</td>
-    <td><span class="badge ${esc(e.status)}">${esc(e.status)}</span> <span class="muted small">${esc(e.reason)}</span></td>
+    <td><span class="badge ${esc(e.status)}">${esc(e.status)}</span>${/^(list|seen):(adult|gambling|malware)$/.test(e.reason) ? ` <span class="badge flag">${esc(e.reason.split(':')[1])}</span>` : ` <span class="muted small">${esc(e.reason)}</span>`}</td>
     <td>${e.reason === 'paused' ? '' : `<button class="link" data-rule="${action}" data-domain="${esc(e.domain)}" data-group="${gid}">${action}</button>`}</td>
   </tr>`;
 }

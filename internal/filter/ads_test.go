@@ -2,6 +2,7 @@ package filter
 
 import (
 	"testing"
+	"time"
 
 	"netguard/internal/store"
 )
@@ -23,9 +24,22 @@ func TestAdTaggingAndPrivateRelay(t *testing.T) {
 	if got := e.Check("unknown", "doubleclick.net"); got.Action != Block || got.Reason != "list:ads" {
 		t.Errorf("default group: %+v, want Block list:ads", got)
 	}
-	if got := e.Check(id, "badsite.com"); got.Reason != "" {
-		t.Errorf("non-ad categories should not be tagged, got %+v", got)
+	if got := e.Check(id, "badsite.com"); got.Action != Allow || got.Reason != "seen:adult" {
+		t.Errorf("allowed adult site should be tagged seen:adult, got %+v", got)
 	}
+	// History logged before tagging gets flagged by RetagHistory.
+	now := time.Now().Unix()
+	st.WriteBatch([]store.QueryEntry{
+		{TS: now - 60, DeviceID: id, ClientIP: "192.168.1.7", Domain: "badsite.com", QType: "A", Status: "allowed"},
+		{TS: now - 60, DeviceID: id, ClientIP: "192.168.1.7", Domain: "example.org", QType: "A", Status: "allowed"},
+	}, nil)
+	if n, err := e.RetagHistory(time.Now().Add(-time.Hour)); err != nil || n != 1 {
+		t.Errorf("RetagHistory = %d, %v; want 1 row tagged", n, err)
+	}
+	if rows, _ := st.RecentQueries(store.QueryFilter{Search: "badsite"}); len(rows) != 1 || rows[0].Reason != "seen:adult" {
+		t.Errorf("retagged row = %+v", rows)
+	}
+
 	// Kids (group 2) has BlockDoH: Private Relay is switched off for the network.
 	d.GroupID = 2
 	st.UpdateDevice(d)

@@ -4,6 +4,7 @@ package filter
 import (
 	"strings"
 	"sync"
+	"time"
 
 	"netguard/internal/store"
 )
@@ -204,12 +205,33 @@ func (e *Engine) Check(deviceID, domain string) Decision {
 	if allowed {
 		return Decision{Action: Allow, Reason: "allowlist"}
 	}
-	// Not blocked for this group, but on an ad/tracking list: tag it so the
-	// Ads dashboard can show what e.g. a TV phones home to before you block it.
-	if m := listMask & e.lists.Mask(AdCategories); m != 0 {
-		return Decision{Action: Allow, Reason: "seen:" + e.lists.CategoryFor(m)}
+	// Not blocked for this group, but on a blocklist: tag it ("seen:adult",
+	// "seen:smarttv") so the query log can flag it and the Ads dashboard can
+	// show what e.g. a TV phones home to before you decide to block it.
+	if listMask != 0 {
+		return Decision{Action: Allow, Reason: "seen:" + e.lists.CategoryFor(listMask)}
 	}
 	return Decision{Action: Allow}
+}
+
+// RetagHistory tags past allowed lookups that are on a blocklist ("seen:adult"
+// etc.), so history logged before a list was added, or before tagging
+// existed, is flagged too. Call after the blocklists have loaded.
+func (e *Engine) RetagHistory(since time.Time) (int64, error) {
+	domains, err := e.store.UntaggedDomains(since.Unix())
+	if err != nil {
+		return 0, err
+	}
+	reasons := map[string]string{}
+	for _, d := range domains {
+		if m := e.lists.Lookup(d); m != 0 {
+			reasons[d] = "seen:" + e.lists.CategoryFor(m)
+		}
+	}
+	if len(reasons) == 0 {
+		return 0, nil
+	}
+	return e.store.TagDomains(reasons, since.Unix())
 }
 
 // AdCategories are the blocklist categories counted as ads/tracking.

@@ -62,12 +62,19 @@ func main() {
 	defer stop()
 
 	lists := filter.NewListManager(filepath.Join(cfg.DataDir, "lists"), cfg.Blocklists)
-	go lists.Refresh(false) // DNS serves unfiltered-by-lists until this finishes
-
 	engine, err := filter.NewEngine(st, lists)
 	if err != nil {
 		log.Fatalf("engine: %v", err)
 	}
+	retention := time.Duration(cfg.LogRetentionDays) * 24 * time.Hour
+	go func() {
+		lists.Refresh(false) // DNS serves unfiltered-by-lists until this finishes
+		if n, err := engine.RetagHistory(time.Now().Add(-retention)); err != nil {
+			log.Printf("retag history: %v", err)
+		} else if n > 0 {
+			log.Printf("retag history: flagged %d earlier lookups found on blocklists", n)
+		}
+	}()
 
 	qlog := querylog.New(st)
 	logDone := make(chan struct{})

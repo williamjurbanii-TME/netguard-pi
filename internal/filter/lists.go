@@ -73,8 +73,22 @@ func (lm *ListManager) Mask(cats []string) uint64 {
 	return m
 }
 
-// CategoryFor returns the first category name present in mask.
+// FlagCategories are the sensitive categories that are reported in preference
+// to others when a domain is on several lists, and flagged in the dashboard.
+var FlagCategories = []string{"adult", "gambling", "malware"}
+
+// CategoryFor returns the category to report for mask: a FlagCategory if one
+// matches, otherwise the first category in config order.
 func (lm *ListManager) CategoryFor(mask uint64) string {
+	for _, c := range FlagCategories {
+		if mask&lm.catBits[c] != 0 {
+			return c
+		}
+	}
+	return lm.firstCategory(mask)
+}
+
+func (lm *ListManager) firstCategory(mask uint64) string {
 	for i, c := range lm.cats {
 		if mask&(1<<i) != 0 {
 			return c

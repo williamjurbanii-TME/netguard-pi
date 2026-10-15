@@ -62,13 +62,13 @@ type Lease struct {
 type QueryEntry struct {
 	Identifier string `json:"-"` // which alias of the device sent it
 	TS         int64  `json:"ts"`
-	DeviceID string `json:"device_id"`
-	ClientIP string `json:"client_ip"`
-	Domain   string `json:"domain"`
-	QType    string `json:"qtype"`
-	Status   string `json:"status"` // allowed, cached, blocked, safesearch, error
-	Reason   string `json:"reason"`
-	Ms       int64  `json:"ms"`
+	DeviceID   string `json:"device_id"`
+	ClientIP   string `json:"client_ip"`
+	Domain     string `json:"domain"`
+	QType      string `json:"qtype"`
+	Status     string `json:"status"` // allowed, cached, blocked, safesearch, error
+	Reason     string `json:"reason"`
+	Ms         int64  `json:"ms"`
 }
 
 type Seen struct {
@@ -749,6 +749,83 @@ func (s *Store) AdDomains(f AdFilter, limit int) ([]AdDomainRow, error) {
 	for rows.Next() {
 		var r AdDomainRow
 		if err := rows.Scan(&r.Domain, &r.DeviceID, &r.Blocked, &r.Allowed); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// UntaggedDomains lists domains with allowed lookups since `since` that carry
+// no reason yet (logged before tagging existed, or before a list was added).
+func (s *Store) UntaggedDomains(since int64) ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT domain FROM queries WHERE ts>=? AND reason='' AND status IN ('allowed','cached')`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// TagDomains sets the reason on untagged allowed lookups of each domain.
+func (s *Store) TagDomains(reasons map[string]string, since int64) (int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var n int64
+	for domain, reason := range reasons {
+		res, err := tx.Exec(`UPDATE queries SET reason=? WHERE domain=? AND ts>=? AND reason='' AND status IN ('allowed','cached')`, reason, domain, since)
+		if err != nil {
+			return 0, err
+		}
+		c, _ := res.RowsAffected()
+		n += c
+	}
+	return n, tx.Commit()
+}
+
+// SiteRow aggregates lookups of one hostname by one device for one reason.
+type SiteRow struct {
+	Domain, DeviceID, Reason string
+	Lookups, Blocked         int64
+	First, Last              int64
+}
+
+// SiteRows powers the collapsed "Sites" view of the query log, newest first.
+// Local answers (wpad.lan, *.local, ...) are left out.
+func (s *Store) SiteRows(f QueryFilter, since int64, limit int) ([]SiteRow, error) {
+	q := `SELECT domain, device_id, reason, COUNT(*), SUM(status='blocked'), MIN(ts), MAX(ts)
+		FROM queries WHERE ts>=? AND status!='local'`
+	args := []any{since}
+	if f.DeviceID != "" {
+		q += ` AND device_id=?`
+		args = append(args, f.DeviceID)
+	}
+	if f.Search != "" {
+		q += ` AND domain LIKE ?`
+		args = append(args, "%"+f.Search+"%")
+	}
+	q += ` GROUP BY domain, device_id, reason ORDER BY MAX(ts) DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SiteRow{}
+	for rows.Next() {
+		var r SiteRow
+		if err := rows.Scan(&r.Domain, &r.DeviceID, &r.Reason, &r.Lookups, &r.Blocked, &r.First, &r.Last); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

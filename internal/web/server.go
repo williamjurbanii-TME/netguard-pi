@@ -33,12 +33,12 @@ type Server struct {
 	version       string
 	domain        string
 	retentionDays int
-	store   *store.Store
-	engine  *filter.Engine
-	lists   *filter.ListManager
-	dhcp    *dhcpserver.Server // nil when DHCP is disabled
-	started time.Time
-	srv     *http.Server
+	store         *store.Store
+	engine        *filter.Engine
+	lists         *filter.ListManager
+	dhcp          *dhcpserver.Server // nil when DHCP is disabled
+	started       time.Time
+	srv           *http.Server
 }
 
 func New(cfg config.WebConfig, version, localDomain string, retentionDays int, st *store.Store, engine *filter.Engine, lists *filter.ListManager, dhcp *dhcpserver.Server) *Server {
@@ -66,6 +66,7 @@ func New(cfg config.WebConfig, version, localDomain string, retentionDays int, s
 	mux.HandleFunc("POST /api/groups/{id}/rule", s.addRule)
 	mux.HandleFunc("GET /api/queries", s.queries)
 	mux.HandleFunc("GET /api/ads", s.ads)
+	mux.HandleFunc("GET /api/sites", s.sites)
 	mux.HandleFunc("GET /api/leases", s.leases)
 	mux.HandleFunc("POST /api/lists/refresh", s.refreshLists)
 
@@ -217,6 +218,126 @@ func (s *Server) ads(w http.ResponseWriter, r *http.Request) {
 		"blocked": total.Blocked, "allowed": total.Allowed,
 		"devices": devices, "companies": groupCompanies(rows, 30),
 	})
+}
+
+// ---- query log: collapsed "sites" view ----
+
+type siteView struct {
+	Site       string   `json:"site"` // registrable domain, e.g. example.com
+	DeviceID   string   `json:"device_id"`
+	Lookups    int64    `json:"lookups"`
+	Blocked    int64    `json:"blocked"`
+	First      int64    `json:"first"`
+	Last       int64    `json:"last"`
+	Hosts      []string `json:"hosts"`      // busiest hostnames under the site
+	Flags      []string `json:"flags"`      // sensitive categories (adult, gambling, malware)
+	Reasons    []string `json:"reasons"`    // distinct block/tag reasons
+	Background bool     `json:"background"` // every lookup was ad/tracking traffic
+}
+
+func siteOf(domain string) string {
+	if s, err := publicsuffix.EffectiveTLDPlusOne(domain); err == nil {
+		return s
+	}
+	return domain
+}
+
+// sites collapses the query log into one row per (site, device), so a visit
+// to a website shows as one line instead of dozens of lookups.
+func (s *Server) sites(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	hours, _ := strconv.Atoi(q.Get("hours"))
+	if hours <= 0 || hours > 24*90 {
+		hours = 24
+	}
+	rows, err := s.store.SiteRows(store.QueryFilter{DeviceID: q.Get("device"), Search: q.Get("search")},
+		time.Now().Add(-time.Duration(hours)*time.Hour).Unix(), 20000)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	adBlocked, adSeen := filter.AdReasons()
+	adReason := map[string]bool{}
+	for _, r := range append(adBlocked, adSeen...) {
+		adReason[r] = true
+	}
+	flagReason := map[string]string{}
+	for _, c := range filter.FlagCategories {
+		flagReason["list:"+c], flagReason["seen:"+c] = c, c
+	}
+
+	type acc struct {
+		siteView
+		hosts          map[string]int64
+		reasons, flags map[string]bool
+		adLookups      int64
+	}
+	byKey := map[string]*acc{}
+	var order []*acc
+	for _, row := range rows {
+		site := siteOf(row.Domain)
+		key := site + "|" + row.DeviceID
+		a := byKey[key]
+		if a == nil {
+			a = &acc{siteView: siteView{Site: site, DeviceID: row.DeviceID, First: row.First},
+				hosts: map[string]int64{}, reasons: map[string]bool{}, flags: map[string]bool{}}
+			byKey[key] = a
+			order = append(order, a)
+		}
+		a.Lookups += row.Lookups
+		a.Blocked += row.Blocked
+		a.First = min(a.First, row.First)
+		a.Last = max(a.Last, row.Last)
+		a.hosts[row.Domain] += row.Lookups
+		if row.Reason != "" {
+			a.reasons[row.Reason] = true
+		}
+		if c := flagReason[row.Reason]; c != "" {
+			a.flags[c] = true
+		}
+		if adReason[row.Reason] {
+			a.adLookups += row.Lookups
+		}
+	}
+
+	onlyFlagged, hideBackground := q.Get("flagged") == "1", q.Get("hide_background") == "1"
+	out := []siteView{}
+	for _, a := range order {
+		a.Background = a.adLookups == a.Lookups
+		if (onlyFlagged && len(a.flags) == 0) || (hideBackground && a.Background) {
+			continue
+		}
+		a.Hosts = topKeys(a.hosts, 3)
+		a.Reasons = sortedKeys(a.reasons)
+		a.Flags = sortedKeys(a.flags)
+		out = append(out, a.siteView)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Last > out[j].Last })
+	if len(out) > 400 {
+		out = out[:400]
+	}
+	writeJSON(w, out)
+}
+
+func topKeys(m map[string]int64, n int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return m[keys[i]] > m[keys[j]] })
+	if len(keys) > n {
+		keys = keys[:n]
+	}
+	return keys
+}
+
+func sortedKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // groupCompanies folds hostnames into their registrable domain

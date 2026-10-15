@@ -32,7 +32,7 @@ blocklists:
     name: URLhaus
     url: https://urlhaus.abuse.ch/downloads/hostfile/
   - category: adult
-    name: StevenBlack Porn
+    name: StevenBlack Adult
     url: https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts
   - category: gambling
     name: StevenBlack Gambling
