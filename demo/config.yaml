@@ -1,0 +1,39 @@
+# Demo instance for screenshots: fictional data, local-only ports, no DHCP.
+# Used by tools/screenshots.ps1. Run from the repository root.
+data_dir: demo/data
+log_retention_days: 30
+
+dns:
+  listen: "127.0.0.1:15354"
+  upstreams: ["1.1.1.1:53"]
+
+local:
+  domain: lan
+  discover_names: false
+
+dhcp:
+  enabled: false
+
+web:
+  listen: "127.0.0.1:18080"
+  password: ""
+
+blocklists:
+  - category: ads
+    name: StevenBlack Unified
+    url: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+  - category: smarttv
+    name: Perflyst Smart TV
+    url: https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV.txt
+  - category: smarttv
+    name: Perflyst Fire TV
+    url: https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/AmazonFireTV.txt
+  - category: malware
+    name: URLhaus
+    url: https://urlhaus.abuse.ch/downloads/hostfile/
+  - category: adult
+    name: StevenBlack Porn
+    url: https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts
+  - category: gambling
+    name: StevenBlack Gambling
+    url: https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-only/hosts

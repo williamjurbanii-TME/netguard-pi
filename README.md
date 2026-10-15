@@ -2,6 +2,21 @@
 
 Network-wide ad blocking (like Pi-hole), smart-TV tracking blocking and per-device parental controls, in a single program that runs on a Raspberry Pi. It comes with a web dashboard showing what every device on your network is talking to.
 
+![Ads & Tracking dashboard](docs/screenshots/ads.png)
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/overview.png" alt="Overview"><br><b>Overview:</b> every lookup on the network, blocked vs allowed</td>
+    <td><img src="docs/screenshots/devices.png" alt="Devices"><br><b>Devices:</b> groups, pause internet, private Wi-Fi addresses</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/groups.png" alt="Groups"><br><b>Groups:</b> block categories and apps, force SafeSearch</td>
+    <td><img src="docs/screenshots/querylog.png" alt="Query log"><br><b>Query log:</b> live, with one-click block or allow</td>
+  </tr>
+</table>
+
+<sub>Screenshots use made-up demo data. To regenerate them, run <code>tools/screenshots.ps1</code>.</sub>
+
 > **Provided as-is, with no warranty.** NetGuard becomes part of your home network. If it is set up wrong, devices can lose internet access until you undo the change. The guides below include an undo step for every change.
 
 ## The easy way: set it up with Claude
