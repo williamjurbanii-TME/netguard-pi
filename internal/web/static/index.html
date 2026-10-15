@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NetGuard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">🛡️ NetGuard</div>
+    <nav>
+      <a href="#overview" data-page="overview">Overview</a>
+      <a href="#ads" data-page="ads">Ads &amp; Tracking</a>
+      <a href="#devices" data-page="devices">Devices</a>
+      <a href="#groups" data-page="groups">Groups</a>
+      <a href="#log" data-page="log">Query Log</a>
+      <a href="#dhcp" data-page="dhcp">DHCP</a>
+    </nav>
+  </header>
+  <main id="app"></main>
+  <div id="modal" class="modal hidden"><div class="modal-body" id="modal-body"></div></div>
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>

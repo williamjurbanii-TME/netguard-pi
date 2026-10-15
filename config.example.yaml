@@ -1,0 +1,65 @@
+# NetGuard configuration. Copy to config.yaml and edit.
+
+data_dir: ./data
+log_retention_days: 30
+
+dns:
+  listen: ":53"
+  # Plain DNS upstreams (host:port). Tried in order.
+  upstreams: ["1.1.1.1:53", "9.9.9.9:53"]
+  cache_size: 10000
+  block_ttl: 60
+
+local:
+  # Devices become reachable as <name>.lan (e.g. emmas-iphone.lan) and the
+  # dashboard as http://netguard.lan:8080. Empty disables local names.
+  domain: lan
+  # Ask devices for their own names (Apple devices via mDNS, Windows via
+  # NetBIOS) when DHCP didn't provide one.
+  discover_names: true
+
+dhcp:
+  # Needed only if your router can't hand out NetGuard as the DNS server (see
+  # README "Choosing a setup"). Then NetGuard hands out addresses instead of
+  # the router. Only enable AFTER turning the router's DHCP server off - two
+  # DHCP servers on one network cause trouble.
+  # The example values assume the router is 192.168.1.1; use your network's.
+  enabled: false
+  server_ip: 192.168.1.2       # this machine's STATIC IP (set on the machine itself)
+  range_start: 192.168.1.20    # .2-.19 are left free for fixed addresses
+  range_end: 192.168.1.254
+  netmask: 255.255.255.0
+  router: 192.168.1.1          # your router's LAN IP (default gateway)
+  dns: []                      # defaults to server_ip, so every device uses NetGuard
+  lease_hours: 24
+
+web:
+  listen: ":8080"
+  username: admin
+  password: ""                 # SET THIS - otherwise anyone on the LAN can change rules
+
+# Each list belongs to a category. Groups (Kids, School, ...) choose which
+# categories they block. Supports hosts files, plain domain lists and
+# adblock-style ||domain^ lists. Lists refresh every 24h.
+blocklists:
+  - category: ads
+    name: StevenBlack Unified
+    url: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+  # Smart-TV telemetry (Samsung, LG, Roku, Vizio ACR, Fire TV...). Blocked for
+  # the "TVs" group. Some TV features (free ad-supported channels, home-screen
+  # suggestions) may stop working; use a group's "Always allow" if so.
+  - category: smarttv
+    name: Perflyst Smart TV
+    url: https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV.txt
+  - category: smarttv
+    name: Perflyst Fire TV
+    url: https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/AmazonFireTV.txt
+  - category: malware
+    name: URLhaus
+    url: https://urlhaus.abuse.ch/downloads/hostfile/
+  - category: adult
+    name: StevenBlack Porn
+    url: https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts
+  - category: gambling
+    name: StevenBlack Gambling
+    url: https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-only/hosts
