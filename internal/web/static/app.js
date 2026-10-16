@@ -53,7 +53,7 @@ document.getElementById('modal').addEventListener('click', e => { if (e.target.i
 
 function chart(hourly) {
   const now = Math.floor(Date.now() / 3600000) * 3600;
-  const byHour = new Map(hourly.map(h => [h.hour, h]));
+  const byHour = new Map((hourly || []).map(h => [h.hour, h]));
   const cols = [];
   let max = 1;
   for (let i = 23; i >= 0; i--) {
@@ -74,7 +74,7 @@ function chart(hourly) {
 const legend = `<div class="legend"><span><i style="background:var(--bar)"></i>Allowed</span><span><i style="background:var(--bad)"></i>Blocked</span></div>`;
 
 function domainList(items, groupId, action) {
-  if (!items.length) return '<p class="muted">Nothing yet.</p>';
+  if (!items || !items.length) return '<p class="muted">Nothing yet.</p>';
   const max = items[0].count || 1;
   return items.map(i => `<div class="bar-row">
       <span class="name" title="${esc(i.domain)}">${esc(i.domain)}</span>
@@ -491,7 +491,7 @@ function editDevice(id) {
   openModal(`
     <h2>Edit device</h2>
     <form id="edit-form">
-      <div class="field"><label>Name</label><input name="name" value="${esc(d.name)}" placeholder="${esc(d.hostname || 'e.g. Emma\'s laptop')}" style="width:100%"></div>
+      <div class="field"><label>Name</label><input name="name" value="${esc(d.name)}" placeholder="${esc(d.hostname || 'e.g. Kid\'s laptop')}" style="width:100%"></div>
       <div class="field"><label>Reserved IP (DHCP, optional)</label><input name="static_ip" value="${esc(d.static_ip)}" placeholder="192.168.50.20" style="width:100%"></div>
       <p class="muted small">Network name: ${esc(d.hostname || '—')}${d.hostname_source ? ` (from ${esc(d.hostname_source)})` : ''}
         ${d.local_name ? ` · reachable as <span class="mono">${esc(d.local_name)}</span>` : ''} · first seen ${ago(d.first_seen)}</p>
@@ -543,7 +543,7 @@ function adChart(series, bucket, hours) {
   const off = bucket === 3600 ? 0 : -new Date().getTimezoneOffset() * 60;
   const now = Math.floor(Date.now() / 1000);
   const end = Math.floor((now + off) / bucket) * bucket - off;
-  const byT = new Map(series.map(s => [s.t, s]));
+  const byT = new Map((series || []).map(s => [s.t, s]));
   const cols = [];
   let max = 1;
   for (let i = n - 1; i >= 0; i--) {

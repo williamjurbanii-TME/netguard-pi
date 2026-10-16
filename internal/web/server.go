@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"log"
 	"net"
@@ -142,11 +143,16 @@ func (s *Server) summary(w http.ResponseWriter, r *http.Request) {
 		total += c.Total
 		blocked += c.Blocked
 	}
-	hourly, _ := s.store.Hourly("", from)
-	topBlocked, _ := s.store.TopDomains("", true, from, 10)
-	topAllowed, _ := s.store.TopDomains("", false, from, 10)
+	hourly, err1 := s.store.Hourly("", from)
+	topBlocked, err2 := s.store.TopDomains("", true, from, 10)
+	topAllowed, err3 := s.store.TopDomains("", false, from, 10)
+	devices, err4 := s.store.ListDevices()
+	if err := errors.Join(err1, err2, err3, err4); err != nil {
+		log.Printf("web: summary: %v", err)
+		fail(w, 500, err)
+		return
+	}
 	lists, domains := s.lists.Status()
-	devices, _ := s.store.ListDevices()
 	active := 0
 	for _, d := range devices {
 		if time.Now().Unix()-d.LastSeen < 15*60 {

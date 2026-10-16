@@ -6,6 +6,31 @@ import (
 	"time"
 )
 
+func TestPragmasOnEveryConnection(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.db.SetMaxIdleConns(0) // every query now gets a brand-new connection
+	for i := 0; i < 3; i++ {
+		var timeout, tempStore int
+		var mode string
+		if err := s.db.QueryRow(`PRAGMA busy_timeout`).Scan(&timeout); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.db.QueryRow(`PRAGMA temp_store`).Scan(&tempStore); err != nil || tempStore != 2 {
+			t.Fatalf("connection %d: temp_store=%d (want 2 = memory), %v", i, tempStore, err)
+		}
+		if err := s.db.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+			t.Fatal(err)
+		}
+		if timeout != 5000 || mode != "wal" {
+			t.Fatalf("connection %d: busy_timeout=%d journal_mode=%s", i, timeout, mode)
+		}
+	}
+}
+
 func TestAdStats(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {

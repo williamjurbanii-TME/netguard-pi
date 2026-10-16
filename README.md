@@ -185,7 +185,7 @@ Phones hide their real MAC address behind a *private Wi-Fi address*. On iOS it's
 - **Fixed:** one private MAC for this network, which never changes. **Recommended for kids' devices.**
 - **Rotating:** a new MAC every couple of weeks, which looks like a new device.
 
-If a rotated address reports the same *distinctive* name, e.g. "Emmas-iPhone", NetGuard merges it automatically and the device keeps its rules. Factory names like "iPhone" can't be told apart, so use **Edit → Merge**. Better, give each phone a real name in Settings → General → About → Name. Until a new address is merged it sits in the **Default** group, so keep Default reasonably strict.
+If a rotated address reports the same *distinctive* name, e.g. "Kids-iPhone", NetGuard merges it automatically and the device keeps its rules. Factory names like "iPhone" can't be told apart, so use **Edit → Merge**. Better, give each phone a real name in Settings → General → About → Name. Until a new address is merged it sits in the **Default** group, so keep Default reasonably strict.
 
 To tell identical-looking phones apart, compare the **Wi-Fi Address** shown on each phone (same ⓘ screen) with the Devices page, then use **Edit → Name**.
 

@@ -74,6 +74,7 @@ func main() {
 		} else if n > 0 {
 			log.Printf("retag history: flagged %d earlier lookups found on blocklists", n)
 		}
+		st.Warm()
 	}()
 
 	qlog := querylog.New(st)
@@ -186,6 +187,9 @@ func maintenance(ctx context.Context, st *store.Store, lists *filter.ListManager
 				log.Printf("prune: %v", err)
 			} else if n > 0 {
 				log.Printf("prune: removed %d old query log entries", n)
+			}
+			if err := st.Optimize(); err != nil {
+				log.Printf("optimize: %v", err)
 			}
 		case <-refresh.C:
 			lists.Refresh(false)

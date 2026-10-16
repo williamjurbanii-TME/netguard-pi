@@ -49,12 +49,12 @@ try {
     New-Item -ItemType Directory -Force docs/screenshots | Out-Null
     $profileDir = Join-Path $env:TEMP 'netguard-screenshots'
     if (Test-Path $profileDir) { Remove-Item -Recurse -Force $profileDir }  # no remembered view settings
-    $emmasIpad = [uri]::EscapeDataString('02:9e:41:d0:3a:27')
+    $kidsIpad = [uri]::EscapeDataString('02:9e:41:d0:3a:27')
     $shots = @(
         @{ name = 'overview';    page = 'overview'; height = 1350; dark = $false },
         @{ name = 'ads';         page = 'ads';      height = 1500; dark = $false },
         @{ name = 'devices';     page = 'devices';  height = 1000; dark = $false },
-        @{ name = 'summary';     page = "devices/$emmasIpad"; height = 900; dark = $false },
+        @{ name = 'summary';     page = "devices/$kidsIpad"; height = 900; dark = $false },
         @{ name = 'groups';      page = 'groups';   height = 1250; dark = $false },
         @{ name = 'querylog';    page = 'log';      height = 1000; dark = $false },
         @{ name = 'ads-dark';    page = 'ads';      height = 1000; dark = $true }

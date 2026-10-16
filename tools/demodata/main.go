@@ -85,18 +85,18 @@ var devices = []device{
 			allow("api.amazonalexa.com", 40), allow("avs-alexa-4-na.amazon.com", 25), allow("ntp-g7g.amazon.com", 10),
 			ads("device-metrics-us.amazon.com", 30), ads("unagi-na.amazon.com", 15),
 		}},
-	{ids: []string{"02:4a:91:3c:7e:15", "06:1d:2b:88:40:a3"}, name: "Mom's iPhone", hostname: "Sarahs-iPhone", src: "dhcp", group: gDefault, ip: "192.168.1.41",
+	{ids: []string{"02:4a:91:3c:7e:15", "06:1d:2b:88:40:a3"}, name: "Mom's iPhone", hostname: "Moms-iPhone", src: "dhcp", group: gDefault, ip: "192.168.1.41",
 		perDay: 1600, hours: allDay, queries: []q{
 			allow("gateway.icloud.com", 30), allow("graph.instagram.com", 25), allow("scontent.cdninstagram.com", 30), allow("weather-data.apple.com", 10),
 			allow("www.pinterest.com", 12), allow("api.spotify.com", 15), allow("mail.google.com", 10),
 			ads("app-measurement.com", 30), ads("metrics.icloud.com", 15), ads("googleads.g.doubleclick.net", 20), ads("graph.facebook.com", 10), ads("adservice.google.com", 10),
 		}},
-	{ids: []string{"0a:7c:e2:51:09:6b"}, name: "Dad's iPhone", hostname: "Mikes-iPhone", src: "dhcp", group: gDefault, ip: "192.168.1.42",
+	{ids: []string{"0a:7c:e2:51:09:6b"}, name: "Dad's iPhone", hostname: "Dads-iPhone", src: "dhcp", group: gDefault, ip: "192.168.1.42",
 		perDay: 1300, hours: allDay, queries: []q{
 			allow("gateway.icloud.com", 25), allow("site.api.espn.com", 25), allow("www.reddit.com", 20), allow("api.weather.com", 8), allow("maps.apple.com", 8),
 			ads("app-measurement.com", 25), ads("metrics.icloud.com", 12), ads("securepubads.g.doubleclick.net", 15), ads("ads.reddit.com", 10),
 		}},
-	{ids: []string{"02:9e:41:d0:3a:27"}, name: "Emma's iPad", hostname: "Emmas-iPad", src: "dhcp", group: gKids, ip: "192.168.1.43",
+	{ids: []string{"02:9e:41:d0:3a:27"}, name: "Kid's iPad", hostname: "Kids-iPad", src: "dhcp", group: gKids, ip: "192.168.1.43",
 		perDay: 900, hours: kids, queries: []q{
 			allow("pbskids.org", 20), allow("www.abcya.com", 15), allow("api.roblox.com", 15), allow("gateway.icloud.com", 10),
 			allow("api-global.netflix.com", 8), blk("adult-site.example", "list:adult", 1),
@@ -104,7 +104,7 @@ var devices = []device{
 			service("www.tiktok.com", "tiktok", 12), safe("www.google.com", 15), blk("mask.icloud.com", "private-relay", 6),
 			ads("app-measurement.com", 15), ads("googleads.g.doubleclick.net", 10),
 		}},
-	{ids: []string{"00:00:5e:00:53:14"}, name: "Jack's Chromebook", hostname: "chromebook-jack", src: "dhcp", group: gSchool, ip: "192.168.1.44",
+	{ids: []string{"00:00:5e:00:53:14"}, name: "Teen's Chromebook", hostname: "chromebook-teen", src: "dhcp", group: gSchool, ip: "192.168.1.44",
 		perDay: 800, hours: schoolDy, queries: []q{
 			allow("classroom.google.com", 30), allow("docs.google.com", 30), allow("www.khanacademy.org", 15), allow("clever.com", 10),
 			safe("www.google.com", 20), safe("www.youtube.com", 15), blk("www.draftkings.com", "list:gambling", 2),

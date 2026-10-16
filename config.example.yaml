@@ -11,7 +11,7 @@ dns:
   block_ttl: 60
 
 local:
-  # Devices become reachable as <name>.lan (e.g. emmas-iphone.lan) and the
+  # Devices become reachable as <name>.lan (e.g. kids-iphone.lan) and the
   # dashboard as http://netguard.lan:8080. Empty disables local names.
   domain: lan
   # Ask devices for their own names (Apple devices via mDNS, Windows via

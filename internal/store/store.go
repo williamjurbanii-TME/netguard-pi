@@ -2,6 +2,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 // DefaultGroupID is the group unknown devices fall into. It cannot be deleted.
@@ -133,6 +134,27 @@ CREATE INDEX IF NOT EXISTS idx_queries_dev_ts ON queries(device_id, ts);
 CREATE INDEX IF NOT EXISTS idx_queries_reason_ts ON queries(reason, ts);
 `
 
+// connPragmas run on every new connection. temp_store=MEMORY keeps SQLite's
+// scratch space for large sorts in RAM: the systemd sandbox only allows writes
+// to the data directory, so temp files would fail with SQLITE_IOERR_GETTEMPPATH
+// (a "disk I/O error" once the query history grows). busy_timeout: without
+// it a moment of contention (another process writing, a WAL checkpoint)
+// makes queries fail immediately with "database is locked" instead of
+// waiting. Setting them once with db.Exec would only cover the first
+// connection, not one database/sql opens later to replace it.
+var connPragmas = []string{"PRAGMA busy_timeout=5000", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=NORMAL", "PRAGMA temp_store=MEMORY"}
+
+func init() {
+	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, _ string) error {
+		for _, p := range connPragmas {
+			if _, err := conn.ExecContext(context.Background(), p, nil); err != nil {
+				return fmt.Errorf("%s: %w", p, err)
+			}
+		}
+		return nil
+	})
+}
+
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -141,12 +163,10 @@ func Open(path string) (*Store, error) {
 	// One connection serialises access; plenty for a home network and avoids
 	// SQLITE_BUSY. Never run a query while iterating another's rows.
 	db.SetMaxOpenConns(1)
-	for _, p := range []string{"PRAGMA journal_mode=WAL", "PRAGMA synchronous=NORMAL", "PRAGMA busy_timeout=5000"} {
-		if _, err := db.Exec(p); err != nil {
-			return nil, fmt.Errorf("%s: %w", p, err)
-		}
+	if err := db.Ping(); err != nil { // opens the connection, running connPragmas
+		return nil, err
 	}
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.Exec(schema + dailySchema); err != nil {
 		return nil, fmt.Errorf("schema: %w", err)
 	}
 	s := &Store{db: db, path: path}
@@ -187,9 +207,11 @@ func (s *Store) migrate() error {
 		}
 	}
 	// Devices from before aliases existed are reachable through their own ID.
-	_, err = s.db.Exec(`INSERT OR IGNORE INTO aliases (identifier, device_id, last_ip, last_seen)
-		SELECT id, id, last_ip, last_seen FROM devices WHERE id NOT IN (SELECT device_id FROM aliases)`)
-	return err
+	if _, err = s.db.Exec(`INSERT OR IGNORE INTO aliases (identifier, device_id, last_ip, last_seen)
+		SELECT id, id, last_ip, last_seen FROM devices WHERE id NOT IN (SELECT device_id FROM aliases)`); err != nil {
+		return err
+	}
+	return s.backfillDaily()
 }
 
 func (s *Store) seed() error {
@@ -413,6 +435,9 @@ func (s *Store) MergeDevices(src, dst string) error {
 			return err
 		}
 	}
+	if err := moveDaily(tx, dst, "", "device_id=?", src); err != nil {
+		return err
+	}
 	// Keep the most recent sighting and fill in a hostname if dst has none.
 	if _, err := tx.Exec(`UPDATE devices SET
 			last_seen = MAX(last_seen, (SELECT last_seen FROM devices WHERE id=?)),
@@ -480,6 +505,9 @@ func (s *Store) WriteBatch(entries []QueryEntry, seen map[string]Seen) error {
 			}
 		}
 		stmt.Close()
+		if err := addDaily(tx, entries); err != nil {
+			return err
+		}
 	}
 	for ident, sn := range seen {
 		if _, err := tx.Exec(`UPDATE aliases SET last_seen=?, last_ip=? WHERE identifier=?`, sn.TS, sn.IP, ident); err != nil {
@@ -551,7 +579,13 @@ type Counts struct {
 }
 
 func (s *Store) CountsByDevice(since int64) (map[string]Counts, error) {
-	rows, err := s.db.Query(`SELECT device_id, COUNT(*), SUM(status='blocked') FROM queries WHERE ts>=? GROUP BY device_id`, since)
+	// INDEXED BY: left alone, SQLite walks the (device_id, ts) index over the
+	// whole history to avoid a sort, far slower than reading just the range.
+	q, args := `SELECT device_id, COUNT(*), SUM(status='blocked') FROM queries INDEXED BY idx_queries_ts WHERE ts>=? GROUP BY device_id`, []any{since}
+	if useDaily(since) {
+		q, args = `SELECT device_id, SUM(lookups), `+dailyBlocked+` FROM daily WHERE day>=? GROUP BY device_id`, []any{dayStart(since)}
+	}
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -646,7 +680,16 @@ type HistoryInfo struct {
 func (s *Store) History() HistoryInfo {
 	var h HistoryInfo
 	var oldest sql.NullInt64
-	_ = s.db.QueryRow(`SELECT COUNT(*), MIN(ts) FROM queries`).Scan(&h.Queries, &oldest)
+	// Rows are only deleted oldest-first, so the id range is the row count,
+	// and reading it is instant (COUNT(*) scans millions of rows).
+	var lo, hi sql.NullInt64
+	// Separate subqueries: MIN and MAX together in one SELECT disable SQLite's
+	// one-row min/max shortcut and scan the whole table.
+	_ = s.db.QueryRow(`SELECT (SELECT MIN(id) FROM queries), (SELECT MAX(id) FROM queries),
+		(SELECT ts FROM queries ORDER BY id LIMIT 1)`).Scan(&lo, &hi, &oldest)
+	if hi.Valid {
+		h.Queries = hi.Int64 - lo.Int64 + 1
+	}
 	h.Oldest = oldest.Int64
 	for _, p := range []string{s.path, s.path + "-wal"} {
 		if fi, err := os.Stat(p); err == nil {
@@ -664,20 +707,31 @@ type AdFilter struct {
 	DeviceID      string // "" = all devices
 }
 
-func (f AdFilter) where() (string, []any) {
+// where returns the filter for the raw log, or for the daily rollup when the
+// range is long (daily reports which).
+func (f AdFilter) where() (w string, args []any, daily bool) {
+	daily = useDaily(f.Since)
 	reasons := append(append([]string{}, f.Blocked...), f.Seen...)
-	q := `reason IN (` + strings.TrimSuffix(strings.Repeat("?,", len(reasons)), ",") + `) AND ts>=?`
-	args := make([]any, 0, len(reasons)+2)
+	w = `reason IN (` + strings.TrimSuffix(strings.Repeat("?,", len(reasons)), ",") + `) AND `
+	args = make([]any, 0, len(reasons)+2)
 	for _, r := range reasons {
 		args = append(args, r)
 	}
-	args = append(args, f.Since)
+	if daily {
+		w += `day>=?`
+		args = append(args, dayStart(f.Since))
+	} else {
+		w += `ts>=?`
+		args = append(args, f.Since)
+	}
 	if f.DeviceID != "" {
-		q += ` AND device_id=?`
+		w += ` AND device_id=?`
 		args = append(args, f.DeviceID)
 	}
-	return q, args
+	return w, args, daily
 }
+
+const dailyAllowed = `SUM(CASE WHEN status!='blocked' THEN lookups ELSE 0 END)`
 
 // AdCount is blocked vs. allowed-but-tagged ad/tracking lookups.
 type AdCount struct {
@@ -693,9 +747,14 @@ type AdBucket struct {
 // AdSeries buckets ad lookups by time. bucket is the width in seconds;
 // offset shifts bucket boundaries (e.g. the local UTC offset for days).
 func (s *Store) AdSeries(f AdFilter, bucket, offset int64) ([]AdBucket, error) {
-	w, args := f.where()
-	rows, err := s.db.Query(`SELECT ((ts+?)/?)*?-?, SUM(status='blocked'), SUM(status!='blocked') FROM queries WHERE `+w+` GROUP BY 1 ORDER BY 1`,
-		append([]any{offset, bucket, bucket, offset}, args...)...)
+	w, args, daily := f.where()
+	q := `SELECT ((ts+?)/?)*?-?, SUM(status='blocked'), SUM(status!='blocked') FROM queries WHERE ` + w + ` GROUP BY 1 ORDER BY 1`
+	if daily {
+		// Days are stored at their own local midnight; re-key them with the
+		// caller's offset (+12h, then floor) so they line up across DST changes.
+		q = `SELECT ((day+43200+?)/?)*?-?, ` + dailyBlocked + `, ` + dailyAllowed + ` FROM daily WHERE ` + w + ` GROUP BY 1 ORDER BY 1`
+	}
+	rows, err := s.db.Query(q, append([]any{offset, bucket, bucket, offset}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -712,8 +771,12 @@ func (s *Store) AdSeries(f AdFilter, bucket, offset int64) ([]AdBucket, error) {
 }
 
 func (s *Store) AdByDevice(f AdFilter) (map[string]AdCount, error) {
-	w, args := f.where()
-	rows, err := s.db.Query(`SELECT device_id, SUM(status='blocked'), SUM(status!='blocked') FROM queries WHERE `+w+` GROUP BY device_id`, args...)
+	w, args, daily := f.where()
+	q := `SELECT device_id, SUM(status='blocked'), SUM(status!='blocked') FROM queries WHERE ` + w + ` GROUP BY device_id`
+	if daily {
+		q = `SELECT device_id, ` + dailyBlocked + `, ` + dailyAllowed + ` FROM daily WHERE ` + w + ` GROUP BY device_id`
+	}
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -738,9 +801,14 @@ type AdDomainRow struct {
 
 // AdDomains returns the busiest (domain, device) pairs.
 func (s *Store) AdDomains(f AdFilter, limit int) ([]AdDomainRow, error) {
-	w, args := f.where()
-	rows, err := s.db.Query(`SELECT domain, device_id, SUM(status='blocked') b, SUM(status!='blocked') a FROM queries WHERE `+w+
-		` GROUP BY domain, device_id ORDER BY b+a DESC LIMIT ?`, append(args, limit)...)
+	w, args, daily := f.where()
+	q := `SELECT domain, device_id, SUM(status='blocked') b, SUM(status!='blocked') a FROM queries WHERE ` + w +
+		` GROUP BY domain, device_id ORDER BY b+a DESC LIMIT ?`
+	if daily {
+		q = `SELECT domain, device_id, ` + dailyBlocked + ` b, ` + dailyAllowed + ` a FROM daily WHERE ` + w +
+			` GROUP BY domain, device_id ORDER BY b+a DESC LIMIT ?`
+	}
+	rows, err := s.db.Query(q, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -790,6 +858,9 @@ func (s *Store) TagDomains(reasons map[string]string, since int64) (int64, error
 		}
 		c, _ := res.RowsAffected()
 		n += c
+		if err := moveDaily(tx, "", reason, `domain=? AND reason='' AND status IN ('allowed','cached') AND day>=?`, domain, dayStart(since)); err != nil {
+			return 0, err
+		}
 	}
 	return n, tx.Commit()
 }
@@ -803,8 +874,13 @@ type DomainActivity struct {
 // DeviceActivity returns a device's lookups since `since`, grouped by
 // hostname and reason (local answers excluded). Powers the device summary.
 func (s *Store) DeviceActivity(deviceID string, since int64) ([]DomainActivity, error) {
-	rows, err := s.db.Query(`SELECT domain, reason, COUNT(*), SUM(status='blocked'), SUM(status='safesearch')
-		FROM queries WHERE device_id=? AND ts>=? AND status!='local' GROUP BY domain, reason`, deviceID, since)
+	q, args := `SELECT domain, reason, COUNT(*), SUM(status='blocked'), SUM(status='safesearch')
+		FROM queries WHERE device_id=? AND ts>=? AND status!='local' GROUP BY domain, reason`, []any{deviceID, since}
+	if useDaily(since) {
+		q, args = `SELECT domain, reason, SUM(lookups), `+dailyBlocked+`, SUM(CASE WHEN status='safesearch' THEN lookups ELSE 0 END)
+			FROM daily WHERE device_id=? AND day>=? AND status!='local' GROUP BY domain, reason`, []any{deviceID, dayStart(since)}
+	}
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -830,19 +906,28 @@ type SiteRow struct {
 // SiteRows powers the collapsed "Sites" view of the query log, newest first.
 // Local answers (wpad.lan, *.local, ...) are left out.
 func (s *Store) SiteRows(f QueryFilter, since int64, limit int) ([]SiteRow, error) {
-	q := `SELECT domain, device_id, reason, COUNT(*), SUM(status='blocked'), MIN(ts), MAX(ts)
-		FROM queries WHERE ts>=? AND status!='local'`
-	args := []any{since}
-	if f.DeviceID != "" {
-		q += ` AND device_id=?`
-		args = append(args, f.DeviceID)
+	var q string
+	var args []any
+	if useDaily(since) {
+		w, a := dailyWhere(since, f.DeviceID, f.Search)
+		q = `SELECT domain, device_id, reason, SUM(lookups), ` + dailyBlocked + `, MIN(first_ts), MAX(last_ts)
+			FROM daily WHERE ` + w + ` AND status!='local' GROUP BY domain, device_id, reason ORDER BY MAX(last_ts) DESC LIMIT ?`
+		args = append(a, limit)
+	} else {
+		q = `SELECT domain, device_id, reason, COUNT(*), SUM(status='blocked'), MIN(ts), MAX(ts)
+			FROM queries WHERE ts>=? AND status!='local'`
+		args = []any{since}
+		if f.DeviceID != "" {
+			q += ` AND device_id=?`
+			args = append(args, f.DeviceID)
+		}
+		if f.Search != "" {
+			q += ` AND domain LIKE ?`
+			args = append(args, "%"+f.Search+"%")
+		}
+		q += ` GROUP BY domain, device_id, reason ORDER BY MAX(ts) DESC LIMIT ?`
+		args = append(args, limit)
 	}
-	if f.Search != "" {
-		q += ` AND domain LIKE ?`
-		args = append(args, "%"+f.Search+"%")
-	}
-	q += ` GROUP BY domain, device_id, reason ORDER BY MAX(ts) DESC LIMIT ?`
-	args = append(args, limit)
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
@@ -860,8 +945,12 @@ func (s *Store) SiteRows(f QueryFilter, since int64, limit int) ([]SiteRow, erro
 }
 
 func (s *Store) PruneQueries(olderThan time.Duration) (int64, error) {
-	res, err := s.db.Exec(`DELETE FROM queries WHERE ts<?`, time.Now().Add(-olderThan).Unix())
+	cutoff := time.Now().Add(-olderThan).Unix()
+	res, err := s.db.Exec(`DELETE FROM queries WHERE ts<?`, cutoff)
 	if err != nil {
+		return 0, err
+	}
+	if _, err := s.db.Exec(`DELETE FROM daily WHERE day<?`, dayStart(cutoff)); err != nil {
 		return 0, err
 	}
 	return res.RowsAffected()
